@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+option go_package = "internal/pb";
+option java_multiple_files = true;
+option java_package = "com.ernilsson.gatekeeper";
+option java_outer_classname = "GatekeeperProto";
+
+service Authorization {
+  // If an empty challenge is returned then the policy is permitted. If a non-empty challenge is returned then it is on
+  // the client to perform a follow-up request to see if they are permitted as. Depending on the sensitivity of the data
+  // the non-empty responses could be cached but if it is it should only be for a short duration of time. If the
+  // operation is not permitted then this endpoint returns an error.
+  rpc Authorize(Policy) returns (Challenge) {}
+}
+
+message Challenge {
+  optional string relation = 1;
+  optional string namespace = 2;
+}
+
+message Policy {
+  string subject = 1;
+  string namespace = 2;
+  string relation = 3;
+  repeated Attribute object_definition = 4;
+}
+
+message Attribute {
+  string name = 1;
+  string value = 2;
+}
