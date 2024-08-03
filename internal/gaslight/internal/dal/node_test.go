@@ -16,6 +16,7 @@ func TestSplit(t *testing.T) {
 		name     string
 		node     *Node
 		expected [2]*Node
+		promoted *Item
 	}{
 		{
 			name: "given even number of items on leaf node",
@@ -40,6 +41,7 @@ func TestSplit(t *testing.T) {
 					},
 				},
 			},
+			promoted: item("three"),
 		},
 		{
 			name: "given even number of items on parent node",
@@ -67,6 +69,7 @@ func TestSplit(t *testing.T) {
 					children: []uint64{4, 5},
 				},
 			},
+			promoted: item("three"),
 		},
 		{
 			name: "given odd number of items on leaf node",
@@ -89,6 +92,7 @@ func TestSplit(t *testing.T) {
 					},
 				},
 			},
+			promoted: item("two"),
 		},
 		{
 			name: "given odd number of items on parent node",
@@ -114,6 +118,7 @@ func TestSplit(t *testing.T) {
 					children: []uint64{3, 4},
 				},
 			},
+			promoted: item("two"),
 		},
 	}
 
@@ -135,12 +140,18 @@ func TestSplit(t *testing.T) {
 	}
 	for _, m := range matrix {
 		t.Run(m.name, func(t *testing.T) {
-			a, b := Split(m.node)
+			a, b, excluded := Split(m.node)
 			if different(m.expected[0], a) {
 				t.Fatalf("got %v; want %v", a, m.expected[0])
 			}
 			if different(m.expected[1], b) {
 				t.Fatalf("got %v; want %v", b, m.expected[1])
+			}
+			if bytes.Compare(m.promoted.key, excluded.key) != 0 {
+				t.Fatalf("got %s; want %s", excluded.key, m.promoted.key)
+			}
+			if bytes.Compare(m.promoted.value, excluded.value) != 0 {
+				t.Fatalf("got %s; want %s", excluded.value, m.promoted.value)
 			}
 		})
 	}

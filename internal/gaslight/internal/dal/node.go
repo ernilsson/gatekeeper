@@ -5,9 +5,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"os"
 )
 
-const MaxNodeSizeMultiplier = 0.025
+const MaxNodeSizeMultiplier = .9
 
 type Item struct {
 	key   []byte
@@ -77,26 +78,8 @@ func (n *Node) Insert(item *Item) int {
 	return i
 }
 
-func (n *Node) Register(key []byte, id uint64) {
-	var i int
-	// find the first index of items where the previous key is not larger than the inserting item
-	for i = 0; i < len(n.items); i++ {
-		if i == len(n.items) || Compare(key, n.items[i].key) < 0 {
-			break
-		}
-	}
-	if i == len(n.children) {
-		n.children = append(n.children, id)
-		return
-	} else {
-		n.children = append(n.children[:i+1], n.children[i:]...)
-		n.children[i] = id
-	}
-}
-
 func (n *Node) Overpopulated() bool {
-	return len(n.items) >= 3
-	/*var size int
+	var size int
 	size += 1 // leaf page header
 	size += 2 // length page header
 	for _, item := range n.items {
@@ -106,7 +89,7 @@ func (n *Node) Overpopulated() bool {
 		size += 2 // offset
 	}
 	size += 8 // final page id
-	return float64(size) >= float64(os.Getpagesize())*MaxNodeSizeMultiplier*/
+	return float64(size) >= float64(os.Getpagesize())*MaxNodeSizeMultiplier
 }
 
 func (n *Node) SplitIndex() int {
@@ -115,9 +98,11 @@ func (n *Node) SplitIndex() int {
 
 // Split creates two nodes from n. The first node will contain items and children from the first half of n and the
 // second node will contain items and children from the second half. The item located directly at the split index is not
-// included in either of the new nodes.
-func Split(n *Node) (*Node, *Node) {
+// included in either of the new nodes. The promoted item is instead returned to the caller to be passed into a parent
+// node.
+func Split(n *Node) (*Node, *Node, *Item) {
 	point := n.SplitIndex()
+	promoted := n.items[point]
 	a := &Node{
 		children: make([]uint64, 0, (len(n.items)/2)+1),
 		items:    make([]*Item, 0, len(n.items)/2),
@@ -134,7 +119,7 @@ func Split(n *Node) (*Node, *Node) {
 	}
 	if n.Leaf() {
 		// There are no children to assign to the new nodes, hence why we can immediately return them
-		return a, b
+		return a, b, promoted
 	}
 	point = int(math.Round(float64(len(n.children)) / 2))
 	for i, child := range n.children[:point] {
@@ -143,7 +128,7 @@ func Split(n *Node) (*Node, *Node) {
 	for i, child := range n.children[point:] {
 		b.AddChild(i, child)
 	}
-	return a, b
+	return a, b, promoted
 }
 
 func (n *Node) Leaf() bool {

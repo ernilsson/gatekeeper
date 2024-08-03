@@ -106,10 +106,8 @@ func (c *Collection) Split(n *Node) error {
 			return err
 		}
 	}
-	point := n.SplitIndex()
-	ptr := parent.Insert(n.items[point])
-
-	a, b := Split(n)
+	a, b, promoted := Split(n)
+	ptr := parent.Insert(promoted)
 	// Since two new nodes are created by split we shall release the page on which the split node was stored on
 	c.dal.freelist.release(n.id)
 
