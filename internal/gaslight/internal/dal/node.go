@@ -3,17 +3,18 @@ package dal
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 )
 
-const MaxNodeSizeMultiplier = 0.95
+const MaxNodeSizeMultiplier = 0.025
 
 type Item struct {
 	key   []byte
 	value []byte
 }
 
-func (i *Item) compare(other *Item) int {
-	return bytes.Compare(i.key, other.key)
+func Compare(a, b []byte) int {
+	return bytes.Compare(a, b)
 }
 
 type Node struct {
@@ -36,7 +37,7 @@ func (n *Node) Child(key []byte) uint64 {
 	var i int
 	// find the first index of items where the previous key is not larger than the inserting item
 	for i = 0; i < len(n.items); i++ {
-		if i == len(n.items) || bytes.Compare(n.items[i].key, key) < 0 {
+		if i == len(n.items) || Compare(key, n.items[i].key) < 0 {
 			break
 		}
 	}
@@ -46,28 +47,40 @@ func (n *Node) Child(key []byte) uint64 {
 	return n.children[i]
 }
 
-func (n *Node) Insert(item *Item) {
+func (n *Node) AddChild(index int, id uint64) {
+	if index > len(n.children) {
+		panic("tried to add more than `k+1` child nodes")
+	}
+	if index == len(n.children) {
+		n.children = append(n.children, id)
+	} else {
+		n.children[index] = id
+	}
+}
+
+func (n *Node) Insert(item *Item) int {
 	var i int
-	// find the first index of items where the previous key is not larger than the inserting item
+	// Find the first index of items where the previous key is not larger than the inserting item
 	for i = 0; i < len(n.items); i++ {
-		if i == len(n.items) || bytes.Compare(n.items[i].key, item.key) < 0 {
+		if i == len(n.items) || Compare(item.key, n.items[i].key) < 0 {
+			fmt.Println(Compare(n.items[i].key, item.key))
 			break
 		}
 	}
 	if i == len(n.items) {
 		n.items = append(n.items, item)
-		return
 	} else {
 		n.items = append(n.items[:i+1], n.items[i:]...)
 		n.items[i] = item
 	}
+	return i
 }
 
 func (n *Node) Register(key []byte, id uint64) {
 	var i int
 	// find the first index of items where the previous key is not larger than the inserting item
 	for i = 0; i < len(n.items); i++ {
-		if i == len(n.items) || bytes.Compare(n.items[i].key, key) < 0 {
+		if i == len(n.items) || Compare(key, n.items[i].key) < 0 {
 			break
 		}
 	}
@@ -81,7 +94,7 @@ func (n *Node) Register(key []byte, id uint64) {
 }
 
 func (n *Node) Overpopulated() bool {
-	return len(n.items) > 3
+	return len(n.items) >= 3
 	/*var size int
 	size += 1 // leaf page header
 	size += 2 // length page header
@@ -95,34 +108,16 @@ func (n *Node) Overpopulated() bool {
 	return float64(size) >= float64(os.Getpagesize())*MaxNodeSizeMultiplier*/
 }
 
-func (n *Node) MaxKey() []byte {
-	k := n.items[0].key
-	for _, item := range n.items {
-		if bytes.Compare(item.key, k) > 0 {
-			k = item.key
-		}
-	}
-	return k
-}
-
-func (n *Node) MinKey() []byte {
-	k := n.items[0].key
-	for _, item := range n.items {
-		if bytes.Compare(item.key, k) < 0 {
-			k = item.key
-		}
-	}
-	return k
+func (n *Node) SplitIndex() int {
+	return int(float64(len(n.items)) / 2)
 }
 
 func Split(n *Node) (*Node, *Node) {
-	// find the middle point from which the split will occur
-	point := int(float64(len(n.items) / 2))
+	point := n.SplitIndex()
 	a := &Node{
 		children: make([]uint64, 0, (len(n.items)/2)+1),
 		items:    make([]*Item, 0, len(n.items)/2),
 	}
-	// flush first half of items to a
 	for _, item := range n.items[:point] {
 		a.Insert(item)
 	}
@@ -130,9 +125,19 @@ func Split(n *Node) (*Node, *Node) {
 		children: make([]uint64, 0, (len(n.items)/2)+1),
 		items:    make([]*Item, 0, len(n.items)/2),
 	}
-	// flush second half of items to b
-	for _, item := range n.items[point:] {
+	for _, item := range n.items[point+1:] {
 		b.Insert(item)
+	}
+	if n.Leaf() {
+		// There are no children to assign to the new nodes, hence why we can immediately return them
+		return a, b
+	}
+	point = int(float64(len(n.children)) / 2)
+	for i, child := range n.children[:point] {
+		a.AddChild(i, child)
+	}
+	for i, child := range n.children[point:] {
+		b.AddChild(i, child)
 	}
 	return a, b
 }
@@ -154,6 +159,8 @@ func (n *Node) Serialize(buf []byte) {
 	}
 	buf[head] = leaf
 	head += 1
+	binary.LittleEndian.PutUint64(buf[head:], n.parent)
+	head += 8
 	binary.LittleEndian.PutUint16(buf[head:], uint16(len(n.items)))
 	head += 2
 
@@ -194,6 +201,8 @@ func (n *Node) Deserialize(buf []byte) {
 	}
 	parent := !leaf
 	head += 1
+	n.parent = binary.LittleEndian.Uint64(buf[head : head+8])
+	head += 8
 	items := binary.LittleEndian.Uint16(buf[head : head+2])
 	head += 2
 

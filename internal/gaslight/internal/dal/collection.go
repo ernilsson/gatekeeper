@@ -5,7 +5,14 @@ import (
 	"errors"
 )
 
-var ErrItemNotFound = errors.New("item not found")
+const (
+	EmptyNodeID = 0
+)
+
+var (
+	ErrItemNotFound = errors.New("item not found")
+	ErrNodeIsRoot   = errors.New("node is root")
+)
 
 type Collection struct {
 	id   uint64
@@ -53,7 +60,11 @@ func (c *Collection) find(key []byte, id uint64) (*Item, error) {
 	return c.find(key, node.Child(key))
 }
 
-func (c *Collection) Insert(item *Item) error {
+func (c *Collection) Insert(key, val []byte) error {
+	item := &Item{
+		key:   key,
+		value: val,
+	}
 	node := &Node{
 		id: c.root,
 	}
@@ -61,11 +72,13 @@ func (c *Collection) Insert(item *Item) error {
 		return err
 	}
 	for node.Parent() {
+		parent := node.id
 		child := node.Child(item.key)
 		if err := c.dal.Deserialize(node, node.Child(item.key)); err != nil {
 			return err
 		}
 		node.id = child
+		node.parent = parent
 	}
 	node.Insert(item)
 	if node.Overpopulated() {
@@ -75,26 +88,36 @@ func (c *Collection) Insert(item *Item) error {
 }
 
 func (c *Collection) Split(n *Node) error {
-	parent := &Node{}
-	if n.parent == 0 {
-		// This node is the root of the tree, by splitting we will create a new root node to hold references to the
-		// split node segments
-		parent = &Node{
-			id:       c.dal.freelist.id(),
-			children: make([]uint64, 0, 4),
-			items:    make([]*Item, 0, 3),
+	parent, err := c.Parent(n)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNodeIsRoot):
+			// This node is the root of the tree, by splitting we will create a new root node to hold references to the
+			// split node segments
+			parent = &Node{
+				id:       c.dal.freelist.id(),
+				children: make([]uint64, 0, 4),
+				items:    make([]*Item, 0, 3),
+			}
+			// Since a new root node must be created we shall also make sure to update the collections root node
+			// identifier to match the new root node
+			c.root = parent.id
+		default:
+			return err
 		}
-		c.root = parent.id
-	} else if err := c.dal.Deserialize(parent, n.parent); err != nil {
-		return err
 	}
+	point := n.SplitIndex()
+	ptr := parent.Insert(n.items[point])
+
 	a, b := Split(n)
+	// Since two new nodes are created by split we shall release the page on which the split node was stored on
+	c.dal.freelist.release(n.id)
+
 	a.parent, b.parent = parent.id, parent.id
 	a.id, b.id = c.dal.freelist.id(), c.dal.freelist.id()
-	item, _ := a.Find(a.MaxKey())
-	parent.Register(item.key, a.id)
-	item, _ = b.Find(b.MinKey())
-	parent.Register(item.key, b.id)
+	// The page identifiers need to be added to the parent at the correct index to ensure traversal of the tree
+	parent.AddChild(ptr, a.id)
+	parent.AddChild(ptr+1, b.id)
 
 	if err := c.dal.Serialize(parent, parent.id); err != nil {
 		return err
@@ -105,10 +128,22 @@ func (c *Collection) Split(n *Node) error {
 	if err := c.dal.Serialize(b, b.id); err != nil {
 		return err
 	}
-	// The page that was split is released to free up the space
-	c.dal.freelist.release(n.id)
+	// If adding another key to the parent caused it to overpopulate we need to recursively apply the same operation to
+	// the parent, either until the parent is no longer overpopulated or until the root has been split.
 	if parent.Overpopulated() {
 		return c.Split(parent)
 	}
 	return nil
+}
+
+func (c *Collection) Parent(n *Node) (*Node, error) {
+	if n.parent == EmptyNodeID {
+		return nil, ErrNodeIsRoot
+	}
+	parent := &Node{}
+	if err := c.dal.Deserialize(parent, n.parent); err != nil {
+		return nil, err
+	}
+	parent.id = n.parent
+	return parent, nil
 }
