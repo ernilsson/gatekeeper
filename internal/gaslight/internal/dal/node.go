@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 )
 
 const MaxNodeSizeMultiplier = 0.025
@@ -112,6 +113,9 @@ func (n *Node) SplitIndex() int {
 	return int(float64(len(n.items)) / 2)
 }
 
+// Split creates two nodes from n. The first node will contain items and children from the first half of n and the
+// second node will contain items and children from the second half. The item located directly at the split index is not
+// included in either of the new nodes.
 func Split(n *Node) (*Node, *Node) {
 	point := n.SplitIndex()
 	a := &Node{
@@ -132,7 +136,7 @@ func Split(n *Node) (*Node, *Node) {
 		// There are no children to assign to the new nodes, hence why we can immediately return them
 		return a, b
 	}
-	point = int(float64(len(n.children)) / 2)
+	point = int(math.Round(float64(len(n.children)) / 2))
 	for i, child := range n.children[:point] {
 		a.AddChild(i, child)
 	}

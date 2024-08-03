@@ -6,7 +6,7 @@ import (
 )
 
 func TestSplit(t *testing.T) {
-	provideItem := func(id string) *Item {
+	item := func(id string) *Item {
 		return &Item{
 			key:   []byte("key_" + id),
 			value: []byte("value_" + id),
@@ -21,22 +21,22 @@ func TestSplit(t *testing.T) {
 			name: "given even number of items on leaf node",
 			node: &Node{
 				items: []*Item{
-					provideItem("one"),
-					provideItem("two"),
-					provideItem("three"),
-					provideItem("four"),
+					item("one"),
+					item("two"),
+					item("three"),
+					item("four"),
 				},
 			},
 			expected: [2]*Node{
 				{
 					items: []*Item{
-						provideItem("one"),
-						provideItem("two"),
+						item("one"),
+						item("two"),
 					},
 				},
 				{
 					items: []*Item{
-						provideItem("four"),
+						item("four"),
 					},
 				},
 			},
@@ -45,26 +45,26 @@ func TestSplit(t *testing.T) {
 			name: "given even number of items on parent node",
 			node: &Node{
 				items: []*Item{
-					provideItem("one"),
-					provideItem("two"),
-					provideItem("three"),
-					provideItem("four"),
+					item("one"),
+					item("two"),
+					item("three"),
+					item("four"),
 				},
 				children: []uint64{1, 2, 3, 4, 5},
 			},
 			expected: [2]*Node{
 				{
 					items: []*Item{
-						provideItem("one"),
-						provideItem("two"),
+						item("one"),
+						item("two"),
 					},
-					children: []uint64{1, 2},
+					children: []uint64{1, 2, 3},
 				},
 				{
 					items: []*Item{
-						provideItem("four"),
+						item("four"),
 					},
-					children: []uint64{3, 4, 5},
+					children: []uint64{4, 5},
 				},
 			},
 		},
@@ -72,20 +72,20 @@ func TestSplit(t *testing.T) {
 			name: "given odd number of items on leaf node",
 			node: &Node{
 				items: []*Item{
-					provideItem("one"),
-					provideItem("two"),
-					provideItem("three"),
+					item("one"),
+					item("two"),
+					item("three"),
 				},
 			},
 			expected: [2]*Node{
 				{
 					items: []*Item{
-						provideItem("one"),
+						item("one"),
 					},
 				},
 				{
 					items: []*Item{
-						provideItem("three"),
+						item("three"),
 					},
 				},
 			},
@@ -94,22 +94,22 @@ func TestSplit(t *testing.T) {
 			name: "given odd number of items on parent node",
 			node: &Node{
 				items: []*Item{
-					provideItem("one"),
-					provideItem("two"),
-					provideItem("three"),
+					item("one"),
+					item("two"),
+					item("three"),
 				},
 				children: []uint64{1, 2, 3, 4},
 			},
 			expected: [2]*Node{
 				{
 					items: []*Item{
-						provideItem("one"),
+						item("one"),
 					},
 					children: []uint64{1, 2},
 				},
 				{
 					items: []*Item{
-						provideItem("three"),
+						item("three"),
 					},
 					children: []uint64{3, 4},
 				},
@@ -117,7 +117,7 @@ func TestSplit(t *testing.T) {
 		},
 	}
 
-	unequal := func(a, b *Node) bool {
+	different := func(a, b *Node) bool {
 		for i := range a.items {
 			if bytes.Compare(a.items[i].key, b.items[i].key) != 0 {
 				return true
@@ -136,10 +136,10 @@ func TestSplit(t *testing.T) {
 	for _, m := range matrix {
 		t.Run(m.name, func(t *testing.T) {
 			a, b := Split(m.node)
-			if unequal(m.expected[0], a) {
+			if different(m.expected[0], a) {
 				t.Fatalf("got %v; want %v", a, m.expected[0])
 			}
-			if unequal(m.expected[1], b) {
+			if different(m.expected[1], b) {
 				t.Fatalf("got %v; want %v", b, m.expected[1])
 			}
 		})
