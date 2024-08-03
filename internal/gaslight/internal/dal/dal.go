@@ -192,3 +192,59 @@ func (d *DAL) Close() error {
 	}
 	return nil
 }
+
+// serializer is a small utility that aids in serializing complex values to byte slices, it keeps track of the current
+// position being written to and which direction the cursor should move after each write (forwards or backwards).
+type serializer struct {
+	position  int
+	direction int
+	buffer    []byte
+}
+
+func (s *serializer) PutUint64(x uint64) {
+	if s.direction < 0 {
+		s.position += 8 * s.direction
+	}
+	binary.LittleEndian.PutUint64(s.buffer[s.position:], x)
+	if s.direction > 0 {
+		s.position += 8 * s.direction
+	}
+}
+
+func (s *serializer) PutUint16(x uint16) {
+	if s.direction < 0 {
+		s.position += 2 * s.direction
+	}
+	binary.LittleEndian.PutUint16(s.buffer[s.position:], x)
+	if s.direction > 0 {
+		s.position += 2 * s.direction
+	}
+}
+
+func (s *serializer) PutUint8(x uint8) {
+	if s.direction < 0 {
+		s.position += 1 * s.direction
+	}
+	s.buffer[s.position] = x
+	if s.direction > 0 {
+		s.position += 1 * s.direction
+	}
+}
+
+func (s *serializer) Put(bytes []byte) {
+	if s.direction < 0 {
+		s.position += len(bytes) * s.direction
+	}
+	copy(s.buffer[s.position:], bytes)
+	if s.direction > 0 {
+		s.position += len(bytes) * s.direction
+	}
+}
+
+func (s *serializer) Step(steps int) {
+	s.position += steps * s.direction
+}
+
+func (s *serializer) Position() int {
+	return s.position
+}

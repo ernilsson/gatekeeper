@@ -149,45 +149,40 @@ func (n *Node) Parent() bool {
 }
 
 func (n *Node) Serialize(buf []byte) {
-	head, tail := 0, len(buf)-1
+	head := serializer{
+		direction: 1,
+		buffer:    buf,
+	}
+	tail := serializer{
+		position:  len(buf) - 1,
+		direction: -1,
+		buffer:    buf,
+	}
 
 	leaf := uint8(0)
 	if n.Leaf() {
 		leaf = 1
 	}
-	buf[head] = leaf
-	head += 1
-	binary.LittleEndian.PutUint64(buf[head:], n.parent)
-	head += 8
-	binary.LittleEndian.PutUint16(buf[head:], uint16(len(n.items)))
-	head += 2
+	head.PutUint8(leaf)
+	head.PutUint64(n.parent)
+	head.PutUint16(uint16(len(n.items)))
 
 	for i, item := range n.items {
 		if n.Parent() {
-			child := n.children[i]
-			binary.LittleEndian.PutUint64(buf[head:], child)
-			head += 8
+			head.PutUint64(n.children[i])
 		}
 
-		klen, vlen := len(item.key), len(item.value)
-		offset := tail - klen - vlen - 2
-		binary.LittleEndian.PutUint16(buf[head:], uint16(offset))
-		head += 2
+		offset := tail.Position() - len(item.key) - len(item.value) - 2
+		head.PutUint16(uint16(offset))
 
-		tail -= vlen
-		copy(buf[tail:], item.value)
-		tail -= 1
-		buf[tail] = byte(vlen)
-
-		tail -= klen
-		copy(buf[tail:], item.key)
-		tail -= 1
-		buf[tail] = byte(klen)
+		tail.Put(item.value)
+		tail.PutUint8(uint8(len(item.value)))
+		tail.Put(item.key)
+		tail.PutUint8(uint8(len(item.key)))
 	}
 
 	if n.Parent() {
-		child := n.children[len(n.children)-1]
-		binary.LittleEndian.PutUint64(buf[head:], child)
+		head.PutUint64(n.children[len(n.children)-1])
 	}
 }
 

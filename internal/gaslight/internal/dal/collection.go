@@ -22,12 +22,13 @@ type Collection struct {
 }
 
 func (c *Collection) Serialize(buf []byte) {
-	head := 0
-	binary.LittleEndian.PutUint64(buf[head:], c.root)
-	head += 8
-	binary.LittleEndian.PutUint16(buf[head:], uint16(len(c.name)))
-	head += 2
-	copy(buf[head:], c.name)
+	head := serializer{
+		direction: 1,
+		buffer:    buf,
+	}
+	head.PutUint64(c.root)
+	head.PutUint16(uint16(len(c.name)))
+	head.Put([]byte(c.name))
 }
 
 func (c *Collection) Deserialize(buf []byte) {
