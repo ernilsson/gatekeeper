@@ -26,6 +26,9 @@ type Node struct {
 	items    []*Item
 }
 
+// Find looks for a key matching the provided one within the items of the node and returns it if found. The returned
+// boolean will be true if a match was found, otherwise it will be false. If no item in the node contains the same key
+// as the one provided then the returned item will be nil.
 func (n *Node) Find(key []byte) (*Item, bool) {
 	for _, item := range n.items {
 		if bytes.Equal(item.key, key) {
@@ -35,9 +38,11 @@ func (n *Node) Find(key []byte) (*Item, bool) {
 	return nil, false
 }
 
+// Child returns the page id of the child which is assigned values under the provided key. See it as a way to find which
+// node should be traversed next in order to find the item for a given key.
 func (n *Node) Child(key []byte) uint64 {
 	var i int
-	// find the first index of items where the previous key is not larger than the inserting item
+	// Find the first index of items where the previous key is not larger than the inserting item
 	for i = 0; i < len(n.items); i++ {
 		if i == len(n.items) || Compare(key, n.items[i].key) < 0 {
 			break
@@ -49,6 +54,9 @@ func (n *Node) Child(key []byte) uint64 {
 	return n.children[i]
 }
 
+// AddChild ensures that the provided index will be the index of the provided child id if successful. The provided index
+// need not be within the range of the children slice, but it must not exceed it by more than one, if it does then the
+// function will panic.
 func (n *Node) AddChild(index int, id uint64) {
 	if index > len(n.children) {
 		panic("tried to add more than `k+1` child nodes")
@@ -60,6 +68,7 @@ func (n *Node) AddChild(index int, id uint64) {
 	}
 }
 
+// Insert inserts the provided item in sorted order amongst the already existing items of the node.
 func (n *Node) Insert(item *Item) int {
 	var i int
 	// Find the first index of items where the previous key is not larger than the inserting item
@@ -78,6 +87,8 @@ func (n *Node) Insert(item *Item) int {
 	return i
 }
 
+// Overpopulated returns true if the node currently takes up too much disk space and should be split into more than one
+// node.
 func (n *Node) Overpopulated() bool {
 	var size int
 	size += 1 // leaf page header
@@ -92,16 +103,12 @@ func (n *Node) Overpopulated() bool {
 	return float64(size) >= float64(os.Getpagesize())*MaxNodeSizeMultiplier
 }
 
-func (n *Node) SplitIndex() int {
-	return int(float64(len(n.items)) / 2)
-}
-
 // Split creates two nodes from n. The first node will contain items and children from the first half of n and the
 // second node will contain items and children from the second half. The item located directly at the split index is not
 // included in either of the new nodes. The promoted item is instead returned to the caller to be passed into a parent
 // node.
 func Split(n *Node) (*Node, *Node, *Item) {
-	point := n.SplitIndex()
+	point := int(float64(len(n.items)) / 2)
 	promoted := n.items[point]
 	a := &Node{
 		children: make([]uint64, 0, (len(n.items)/2)+1),
@@ -118,7 +125,7 @@ func Split(n *Node) (*Node, *Node, *Item) {
 		b.Insert(item)
 	}
 	if n.Leaf() {
-		// There are no children to assign to the new nodes, hence why we can immediately return them
+		// There are no children to assign to the new nodes, hence why we can immediately return
 		return a, b, promoted
 	}
 	point = int(math.Round(float64(len(n.children)) / 2))
@@ -131,10 +138,12 @@ func Split(n *Node) (*Node, *Node, *Item) {
 	return a, b, promoted
 }
 
+// Leaf returns true if the node does not have any children.
 func (n *Node) Leaf() bool {
 	return len(n.children) == 0
 }
 
+// Parent returns true if the node has at least one child.
 func (n *Node) Parent() bool {
 	return len(n.children) > 0
 }
