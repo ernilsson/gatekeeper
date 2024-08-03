@@ -18,7 +18,7 @@ func TestSplit(t *testing.T) {
 		expected [2]*Node
 	}{
 		{
-			name: "given even amount of items on leaf node",
+			name: "given even number of items on leaf node",
 			node: &Node{
 				items: []*Item{
 					provideItem("one"),
@@ -42,7 +42,34 @@ func TestSplit(t *testing.T) {
 			},
 		},
 		{
-			name: "given odd amount of items on leaf node",
+			name: "given even number of items on parent node",
+			node: &Node{
+				items: []*Item{
+					provideItem("one"),
+					provideItem("two"),
+					provideItem("three"),
+					provideItem("four"),
+				},
+				children: []uint64{1, 2, 3, 4, 5},
+			},
+			expected: [2]*Node{
+				{
+					items: []*Item{
+						provideItem("one"),
+						provideItem("two"),
+					},
+					children: []uint64{1, 2},
+				},
+				{
+					items: []*Item{
+						provideItem("four"),
+					},
+					children: []uint64{3, 4, 5},
+				},
+			},
+		},
+		{
+			name: "given odd number of items on leaf node",
 			node: &Node{
 				items: []*Item{
 					provideItem("one"),
@@ -60,6 +87,31 @@ func TestSplit(t *testing.T) {
 					items: []*Item{
 						provideItem("three"),
 					},
+				},
+			},
+		},
+		{
+			name: "given odd number of items on parent node",
+			node: &Node{
+				items: []*Item{
+					provideItem("one"),
+					provideItem("two"),
+					provideItem("three"),
+				},
+				children: []uint64{1, 2, 3, 4},
+			},
+			expected: [2]*Node{
+				{
+					items: []*Item{
+						provideItem("one"),
+					},
+					children: []uint64{1, 2},
+				},
+				{
+					items: []*Item{
+						provideItem("three"),
+					},
+					children: []uint64{3, 4},
 				},
 			},
 		},
