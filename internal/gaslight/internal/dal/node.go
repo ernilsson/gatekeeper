@@ -150,12 +150,12 @@ func (n *Node) Parent() bool {
 
 func (n *Node) Serialize(buf []byte) {
 	head := serializer{
-		direction: 1,
+		direction: forwards,
 		buffer:    buf,
 	}
 	tail := serializer{
-		position:  len(buf) - 1,
-		direction: -1,
+		cursor:    len(buf) - 1,
+		direction: backwards,
 		buffer:    buf,
 	}
 
@@ -172,7 +172,7 @@ func (n *Node) Serialize(buf []byte) {
 			head.PutUint64(n.children[i])
 		}
 
-		offset := tail.Position() - len(item.key) - len(item.value) - 2
+		offset := tail.cursor - len(item.key) - len(item.value) - 2
 		head.PutUint16(uint16(offset))
 
 		tail.Put(item.value)

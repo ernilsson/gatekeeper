@@ -23,7 +23,7 @@ type Collection struct {
 
 func (c *Collection) Serialize(buf []byte) {
 	head := serializer{
-		direction: 1,
+		direction: forwards,
 		buffer:    buf,
 	}
 	head.PutUint64(c.root)
@@ -145,4 +145,8 @@ func (c *Collection) Parent(n *Node) (*Node, error) {
 	}
 	parent.id = n.parent
 	return parent, nil
+}
+
+func (c *Collection) Delete(key []byte) error {
+	panic("not implemented")
 }
