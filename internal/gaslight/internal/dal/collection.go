@@ -10,8 +10,8 @@ const (
 )
 
 var (
-	ErrItemNotFound = errors.New("item not found")
-	ErrNodeIsRoot   = errors.New("node is root")
+	ErrItemNotFound  = errors.New("item not found")
+	ErrNoParentFound = errors.New("node is root")
 )
 
 type Collection struct {
@@ -43,17 +43,22 @@ func (c *Collection) Deserialize(buf []byte) {
 }
 
 func (c *Collection) Find(key []byte) (*Item, error) {
-	return c.find(key, c.root)
+	n, err := c.find(key, c.root)
+	if err != nil {
+		return nil, err
+	}
+	item, _ := n.Find(key)
+	return item, nil
 }
 
-func (c *Collection) find(key []byte, id uint64) (*Item, error) {
+func (c *Collection) find(key []byte, id uint64) (*Node, error) {
 	node := &Node{}
 	if err := c.dal.Deserialize(node, id); err != nil {
 		return nil, err
 	}
-	item, found := node.Find(key)
+	_, found := node.Find(key)
 	if found {
-		return item, nil
+		return node, nil
 	}
 	if node.Leaf() {
 		return nil, ErrItemNotFound
@@ -92,7 +97,7 @@ func (c *Collection) Split(n *Node) error {
 	parent, err := c.Parent(n)
 	if err != nil {
 		switch {
-		case errors.Is(err, ErrNodeIsRoot):
+		case errors.Is(err, ErrNoParentFound):
 			// This node is the root of the tree, by splitting we will create a new root node to hold references to the
 			// split node segments
 			parent = &Node{
@@ -137,7 +142,7 @@ func (c *Collection) Split(n *Node) error {
 
 func (c *Collection) Parent(n *Node) (*Node, error) {
 	if n.parent == EmptyNodeID {
-		return nil, ErrNodeIsRoot
+		return nil, ErrNoParentFound
 	}
 	parent := &Node{}
 	if err := c.dal.Deserialize(parent, n.parent); err != nil {
@@ -147,6 +152,56 @@ func (c *Collection) Parent(n *Node) (*Node, error) {
 	return parent, nil
 }
 
+type deletion func(node *Node, key []byte) error
+
+func (c *Collection) deleteInternalNode(node *Node, key []byte) error {
+
+}
+
+func (c *Collection) deleteLeafNode(node *Node, key []byte) error {
+	if node.isLowerBound() {
+		parent, err := c.Parent(node)
+		if err != nil {
+			return err
+		}
+		index, _ := parent.ChildIndex(node.id)
+		var left, right *Node
+		if index > 0 {
+			err = c.dal.Deserialize(left, parent.children[index-1])
+			if err != nil {
+				return err
+			}
+		}
+		if index < len(node.children)-1 {
+			err = c.dal.Deserialize(right, parent.children[index+1])
+			if err != nil {
+				return err
+			}
+		}
+
+	}
+}
+
+func (c *Collection) merge(dst, src *Node) {
+	for _, item := range src.items {
+		dst.Insert(item)
+	}
+	clear(src.items)
+}
+
 func (c *Collection) Delete(key []byte) error {
-	panic("not implemented")
+	node, err := c.find(key, c.root)
+	if err != nil {
+		return err
+	}
+	var deleteFunc deletion
+	if node.Leaf() {
+		deleteFunc = c.deleteLeafNode
+	} else {
+		deleteFunc = c.deleteInternalNode
+	}
+	if err := deleteFunc(node, key); err != nil {
+		return err
+	}
+	// TODO: Re-balance the tree
 }

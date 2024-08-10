@@ -3,12 +3,23 @@ package dal
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"os"
 )
 
-const MaxNodeSizeMultiplier = .9
+var (
+	ErrChildIndexNotFound = errors.New("child index not found")
+	ErrItemIndexNotFound  = errors.New("item index not found")
+)
+
+const (
+	MaxNodeSizeMultiplier = .9
+	// NodeSize is what in general B-Tree terms would be referred to as "t". It decides the minimum (t-1) and the
+	// maximum (2t - 1) amount of items we can store in a node at any given time.
+	NodeSize = 5
+)
 
 type Item struct {
 	key   []byte
@@ -38,6 +49,14 @@ func (n *Node) Find(key []byte) (*Item, bool) {
 	return nil, false
 }
 
+func (n *Node) isLowerBound() bool {
+	return len(n.items) == NodeSize-1
+}
+
+func (n *Node) isUpperBound() bool {
+	return len(n.items) == (2*NodeSize)-1
+}
+
 // Child returns the page id of the child which is assigned values under the provided key. See it as a way to find which
 // node should be traversed next in order to find the item for a given key.
 func (n *Node) Child(key []byte) uint64 {
@@ -52,6 +71,28 @@ func (n *Node) Child(key []byte) uint64 {
 		return n.children[len(n.children)-1]
 	}
 	return n.children[i]
+}
+
+// ChildIndex returns the index in which the child with the specified ID exists within the node. If no child of the node
+// has the specified ID then an error is returned.
+func (n *Node) ChildIndex(id uint64) (int, error) {
+	for i, c := range n.children {
+		if c == id {
+			return i, nil
+		}
+	}
+	return -1, ErrChildIndexNotFound
+}
+
+// ItemIndex returns the index in which the item with the specified key exists within the node. If no item in the node
+// has the specified key then an error is returned.
+func (n *Node) ItemIndex(key []byte) (int, error) {
+	for i, item := range n.items {
+		if bytes.Equal(item.key, key) {
+			return i, nil
+		}
+	}
+	return -1, ErrItemIndexNotFound
 }
 
 // AddChild ensures that the provided index will be the index of the provided child id if successful. The provided index
@@ -85,6 +126,16 @@ func (n *Node) Insert(item *Item) int {
 		n.items[i] = item
 	}
 	return i
+}
+
+func (n *Node) Delete(key []byte) error {
+	for i, item := range n.items {
+		if bytes.Equal(item.key, key) {
+			n.items = append(n.items[:i], n.items[i+1:]...)
+			return nil
+		}
+	}
+	return ErrItemNotFound
 }
 
 // Overpopulated returns true if the node currently takes up too much disk space and should be split into more than one
