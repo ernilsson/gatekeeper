@@ -152,34 +152,42 @@ func (c *Collection) Parent(n *Node) (*Node, error) {
 	return parent, nil
 }
 
-type deletion func(node *Node, key []byte) error
-
-func (c *Collection) deleteInternalNode(node *Node, key []byte) error {
-
+func (c *Collection) LeftSibling(node *Node) (*Node, error) {
+	parent, err := c.Parent(node)
+	if err != nil {
+		return nil, err
+	}
+	index, err := parent.ChildIndex(node.id)
+	if err != nil {
+		return nil, err
+	}
+	if index == 0 {
+		return nil, nil
+	}
+	sibling := &Node{}
+	if err := c.dal.Deserialize(sibling, parent.children[index-1]); err != nil {
+		return nil, err
+	}
+	return sibling, nil
 }
 
-func (c *Collection) deleteLeafNode(node *Node, key []byte) error {
-	if node.isLowerBound() {
-		parent, err := c.Parent(node)
-		if err != nil {
-			return err
-		}
-		index, _ := parent.ChildIndex(node.id)
-		var left, right *Node
-		if index > 0 {
-			err = c.dal.Deserialize(left, parent.children[index-1])
-			if err != nil {
-				return err
-			}
-		}
-		if index < len(node.children)-1 {
-			err = c.dal.Deserialize(right, parent.children[index+1])
-			if err != nil {
-				return err
-			}
-		}
-
+func (c *Collection) RightSibling(node *Node) (*Node, error) {
+	parent, err := c.Parent(node)
+	if err != nil {
+		return nil, err
 	}
+	index, err := parent.ChildIndex(node.id)
+	if err != nil {
+		return nil, err
+	}
+	if index == len(parent.children)-1 {
+		return nil, nil
+	}
+	sibling := &Node{}
+	if err := c.dal.Deserialize(sibling, parent.children[index+1]); err != nil {
+		return nil, err
+	}
+	return sibling, nil
 }
 
 func (c *Collection) merge(dst, src *Node) {
@@ -190,18 +198,56 @@ func (c *Collection) merge(dst, src *Node) {
 }
 
 func (c *Collection) Delete(key []byte) error {
-	node, err := c.find(key, c.root)
+	_, err := c.delete(key)
 	if err != nil {
 		return err
 	}
-	var deleteFunc deletion
+	// TODO: Implement the re-balancing of the tree after deletion
+	return c.rebalance(nil)
+}
+
+func (c *Collection) rebalance(node *Node) error {
+	panic("not implemented")
+}
+
+// delete hides the complexity of the actual deletion of a key and separates the deletion-specific operations from
+// re-balancing the tree.
+func (c *Collection) delete(key []byte) ([]Node, error) {
+	node, err := c.find(key, c.root)
+	if err != nil {
+		return nil, err
+	}
 	if node.Leaf() {
-		deleteFunc = c.deleteLeafNode
-	} else {
-		deleteFunc = c.deleteInternalNode
+		err := node.Delete(key)
+		if err != nil {
+			return nil, err
+		}
+		return nil, c.dal.Serialize(node, node.id)
 	}
-	if err := deleteFunc(node, key); err != nil {
-		return err
+
+	affected := make([]Node, 0, 3)
+	affected = append(affected, *node)
+	index, err := node.ItemIndex(key)
+	if err != nil {
+		return nil, err
 	}
-	// TODO: Re-balance the tree
+	child := &Node{}
+	if err := c.dal.Deserialize(child, node.children[index]); err != nil {
+		return nil, err
+	}
+	affected = append(affected, *child)
+	if child.Parent() {
+		if err := c.dal.Deserialize(child, child.children[len(child.children)-1]); err != nil {
+			return nil, err
+		}
+		affected = append(affected, *child)
+	}
+	node.items[index] = child.items[len(child.items)-1]
+	child.items = child.items[:len(child.items)-1]
+	for _, ch := range affected {
+		if err := c.dal.Serialize(&ch, ch.id); err != nil {
+			return nil, err
+		}
+	}
+	return affected, nil
 }

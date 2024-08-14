@@ -109,6 +109,15 @@ func (n *Node) AddChild(index int, id uint64) {
 	}
 }
 
+func (n *Node) TraversingKeyIndex(key []byte) (int, error) {
+	for i, item := range n.items {
+		if Compare(key, item.key) < 0 {
+			return i, nil
+		}
+	}
+	return 0, errors.New("traversing key index not found")
+}
+
 // Insert inserts the provided item in sorted order amongst the already existing items of the node.
 func (n *Node) Insert(item *Item) int {
 	var i int
