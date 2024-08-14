@@ -3,6 +3,7 @@ package dal
 import (
 	"encoding/binary"
 	"errors"
+	"math"
 )
 
 const (
@@ -203,11 +204,53 @@ func (c *Collection) Delete(key []byte) error {
 		return err
 	}
 	// TODO: Implement the re-balancing of the tree after deletion
-	return c.rebalance(nil)
+	return c.balance(nil)
 }
 
-func (c *Collection) rebalance(node *Node) error {
+func (c *Collection) balance(node *Node) error {
 	panic("not implemented")
+}
+
+func (c *Collection) rotateRight(parent, node, sibling *Node) error {
+	item := node.items[len(node.items)-1]
+	node.items = node.items[:len(node.items)-1]
+	index, err := parent.ChildIndex(sibling.id)
+	if err != nil {
+		return err
+	}
+	itm := int(math.Max(float64(index-1), 0))
+	parentItem := parent.items[itm]
+	parent.items[itm] = item
+	sibling.items = append([]*Item{parentItem}, sibling.items...)
+
+	if node.Parent() {
+		shift := node.children[len(node.children)-1]
+		node.children = node.children[:len(node.children)-1]
+		sibling.children = append([]uint64{shift}, sibling.children...)
+	}
+	return nil
+}
+
+func (c *Collection) rotateLeft(parent, node, sibling *Node) error {
+	item := sibling.items[0]
+	sibling.items = sibling.items[1:]
+	itm, err := parent.ChildIndex(sibling.id)
+	if err != nil {
+		return err
+	}
+	if itm == len(parent.children)-1 {
+		itm = len(parent.items) - 1
+	}
+	parentItem := parent.items[itm]
+	parent.items[itm] = item
+	node.items = append(node.items, parentItem)
+
+	if node.Parent() {
+		shift := sibling.children[0]
+		sibling.children = sibling.children[1:]
+		node.children = append(sibling.children, shift)
+	}
+	return nil
 }
 
 // delete hides the complexity of the actual deletion of a key and separates the deletion-specific operations from
